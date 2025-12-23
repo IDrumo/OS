@@ -13,7 +13,6 @@ const char* OS_NAME = "Unknown";
 
 int main() {
     std::cout << "Hello, World!\n";
-    std::cout << "Hello, World!\n";
     std::cout << "Определение операционной системы:\n";
 
     std::cout << "Вы работаете в системе: " << OS_NAME << "\n\n";
