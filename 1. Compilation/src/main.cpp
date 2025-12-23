@@ -2,7 +2,7 @@
 
 #ifdef _WIN32
     #include <windows.h>
-    const char* OS_NAME = "Windows";
+auto OS_NAME = "Windows";
 #elif __unix__
 const char* OS_NAME = "Unix/Linux";
 #elif __APPLE__
@@ -12,7 +12,6 @@ const char* OS_NAME = "Unknown";
 #endif
 
 int main() {
-    std::cout << "Hello, World!\n";
     std::cout << "Hello, World!\n";
     std::cout << "Определение операционной системы:\n";
 
