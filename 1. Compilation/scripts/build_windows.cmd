@@ -2,22 +2,18 @@
 chcp 65001 >nul
 echo.
 
-echo Обновление репозитория...
-git pull 2>nul || echo Git update skipped
+set TARGET_DIR=%~1
+if "%TARGET_DIR%"=="" set TARGET_DIR=.
+set EXEC_NAME=%~2
+if "%EXEC_NAME%"=="" set EXEC_NAME=app
 
-echo Очистка предыдущей сборки...
-if exist "build" (
-    rmdir /s /q build
-    echo Папка 'build' удалена.
-)
+cd /d "%TARGET_DIR%" 2>nul || exit /b 1
 
-echo Конфигурация CMake...
-cmake -S . -B build -G "MinGW Makefiles"
-echo Сборка проекта...
-cmake --build build --parallel
+echo ==============================
+echo Сборка проекта в: %CD%
+echo Имя исполняемого файла: %EXEC_NAME%
+echo ==============================
 
-echo.
-echo Сборка завершена!
-echo Запуск программы...
-echo.
-"build\bin\OS_Detector.exe"
+rmdir /s /q build 2>nul
+git fetch 2>nul & git pull --ff-only 2>nul || echo Using local
+cmake -B build -S . -G "MinGW Makefiles" && cmake --build build && build\%EXEC_NAME%.exe

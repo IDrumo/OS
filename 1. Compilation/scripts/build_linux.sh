@@ -1,21 +1,15 @@
 #!/bin/bash
 
-echo "Обновление кода из Git..."
-git pull 2>/dev/null || echo "Git update skipped"
+TARGET_DIR="${1:-.}"
+EXEC_NAME="${2:-app}"
 
-echo "Очистка предыдущей сборки..."
-rm -rf build
+cd "$TARGET_DIR" || exit 1
 
-echo "Создание папки build..."
-mkdir -p build
-cd build
+echo "=============================="
+echo "Сборка проекта в: $(pwd)"
+echo "Имя исполняемого файла: $EXEC_NAME"
+echo "=============================="
 
-echo "Сборка проекта..."
-cmake .. >/dev/null 2>&1
-make -j$(nproc)
-
-echo ""
-echo "Сборка завершена!"
-echo Запуск программы...
-echo ""
-./bin/OS_Detector
+rm -rf build 2>/dev/null
+git fetch 2>/dev/null; git pull --ff-only 2>/dev/null || true
+cmake -B build -S . && cmake --build build && ./build/"$EXEC_NAME"
