@@ -13,3 +13,4 @@ make -j$(nproc)
 
 echo ""
 echo "Сборка завершена!"
+./bin/OS_Detector
