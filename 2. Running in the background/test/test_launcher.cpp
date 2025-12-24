@@ -77,7 +77,7 @@ void testAdvancedControl() {
     if (completed) {
         std::cout << "Процесс уже завершился. Код: " << exit_code << std::endl;
     } else {
-        std::cout << "Процесс выполняется..." << std::endl;
+        std::cout << "Процесс выполняется...Код: " << exit_code << std::endl;
     }
     
     // Ждем 2 секунды и проверяем снова

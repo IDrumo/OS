@@ -77,4 +77,4 @@ private:
     #endif
 };
 
-#endif // BACKGROUND_LAUNCHER_H
+#endif

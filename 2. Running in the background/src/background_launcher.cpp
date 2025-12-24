@@ -15,14 +15,12 @@
 
 int BackgroundLauncher::launch(const std::string& command, bool wait_for_completion) {
     if (wait_for_completion) {
-        // Если нужно ждать завершения, используем системную команду
         #ifdef _WIN32
             return system(command.c_str());
         #else
             return system(command.c_str());
         #endif
     } else {
-        // Запуск в фоновом режиме без ожидания
         ProcessId pid;
         ProcessHandle handle = launchWithControl(command, pid);
 
@@ -43,7 +41,6 @@ int BackgroundLauncher::launch(const std::string& command, bool wait_for_complet
 
 BackgroundLauncher::ProcessHandle BackgroundLauncher::launchWithControl(const std::string& command, ProcessId& process_id) {
     #ifdef _WIN32
-        // Преобразуем строку в широкую для Windows API
         std::wstring wcmd = stringToWstring(command);
         
         STARTUPINFOW si;
@@ -52,14 +49,11 @@ BackgroundLauncher::ProcessHandle BackgroundLauncher::launchWithControl(const st
         ZeroMemory(&si, sizeof(si));
         si.cb = sizeof(si);
         ZeroMemory(&pi, sizeof(pi));
-        
-        // Создаем копию строки команды, так как CreateProcess может модифицировать ее
+
         wchar_t* cmdline = _wcsdup(wcmd.c_str());
-        
-        // Флаги создания процесса
+
         DWORD creationFlags = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP;
-        
-        // Создаем процесс
+
         if (!CreateProcessW(
             NULL,           // Имя приложения (используем командную строку)
             cmdline,        // Командная строка
@@ -79,29 +73,22 @@ BackgroundLauncher::ProcessHandle BackgroundLauncher::launchWithControl(const st
         }
         
         free(cmdline);
-        
-        // Закрываем ненужный дескриптор основного потока
+
         CloseHandle(pi.hThread);
         
         process_id = pi.dwProcessId;
         return pi.hProcess;
         
     #else
-        // UNIX/Linux implementation
         pid_t pid = fork();
         
         if (pid < 0) {
-            // Ошибка при fork
             std::cerr << "fork failed: " << strerror(errno) << std::endl;
             process_id = -1;
             return -1;
         } else if (pid == 0) {
-            // Дочерний процесс
-            
-            // Игнорируем сигнал от терминала
             signal(SIGINT, SIG_IGN);
-            
-            // Разбиваем команду на аргументы
+
             std::vector<char*> args;
             std::istringstream iss(command);
             std::string token;
@@ -111,22 +98,18 @@ BackgroundLauncher::ProcessHandle BackgroundLauncher::launchWithControl(const st
                 strcpy(arg, token.c_str());
                 args.push_back(arg);
             }
-            args.push_back(nullptr); // Завершаем массив nullptr
-            
-            // Запускаем программу
+            args.push_back(nullptr);
+
             execvp(args[0], args.data());
             
-            // Если execvp вернул управление, значит произошла ошибка
             std::cerr << "execvp failed: " << strerror(errno) << std::endl;
             
-            // Освобождаем память
             for (char* arg : args) {
                 if (arg) delete[] arg;
             }
             
             _exit(EXIT_FAILURE);
         } else {
-            // Родительский процесс
             process_id = pid;
             return pid;
         }
@@ -152,7 +135,6 @@ int BackgroundLauncher::waitForCompletion(ProcessHandle process, ProcessId proce
                 return static_cast<int>(exitCode);
             }
         } else if (waitResult == WAIT_TIMEOUT) {
-            // Таймаут
             return -2;
         }
         
@@ -163,25 +145,21 @@ int BackgroundLauncher::waitForCompletion(ProcessHandle process, ProcessId proce
         pid_t result;
         
         if (timeout_ms > 0) {
-            // Неблокирующее ожидание с таймаутом (упрощенная реализация)
             for (int i = 0; i < timeout_ms / 100; i++) {
                 result = waitpid(process_id, &status, WNOHANG);
                 if (result == process_id) {
                     break;
                 } else if (result == 0) {
-                    // Процесс еще не завершился
                     usleep(100000); // 100ms
                 } else {
-                    // Ошибка
                     return -1;
                 }
             }
             
             if (result == 0) {
-                return -2; // Таймаут
+                return -2;
             }
         } else {
-            // Блокирующее ожидание
             result = waitpid(process_id, &status, 0);
         }
         
@@ -189,7 +167,7 @@ int BackgroundLauncher::waitForCompletion(ProcessHandle process, ProcessId proce
             if (WIFEXITED(status)) {
                 return WEXITSTATUS(status);
             } else if (WIFSIGNALED(status)) {
-                return 128 + WTERMSIG(status); // Сигнал + 128 (стандартная практика)
+                return 128 + WTERMSIG(status);
             }
         }
         
@@ -214,7 +192,7 @@ bool BackgroundLauncher::isCompleted(ProcessHandle process, ProcessId process_id
         pid_t result = waitpid(process_id, &status, WNOHANG);
         
         if (result == 0) {
-            return false; // Процесс еще работает
+            return false;
         } else if (result == process_id) {
             if (WIFEXITED(status)) {
                 exit_code = WEXITSTATUS(status);
@@ -226,7 +204,7 @@ bool BackgroundLauncher::isCompleted(ProcessHandle process, ProcessId process_id
             return true;
         }
         
-        return false; // Ошибка или процесс не найден
+        return false;
     #endif
 }
 
@@ -235,7 +213,6 @@ void BackgroundLauncher::terminateProcess(ProcessHandle process, ProcessId proce
         if (force) {
             TerminateProcess(process, 1);
         } else {
-            // Отправляем Ctrl+C в группу процессов
             GenerateConsoleCtrlEvent(CTRL_C_EVENT, process_id);
         }
     #else
@@ -253,8 +230,7 @@ void BackgroundLauncher::closeHandle(ProcessHandle process) {
             CloseHandle(process);
         }
     #else
-        // В POSIX нет необходимости явно закрывать дескриптор pid
-        (void)process; // Подавляем warning о неиспользуемом параметре
+        (void)process;
     #endif
 }
 
