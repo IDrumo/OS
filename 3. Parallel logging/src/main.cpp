@@ -10,6 +10,7 @@
 #include <cstring>
 #include <limits>
 #include <atomic>
+#include <vector>
 
 const char* LOG_FILE = "app.log";
 
@@ -33,6 +34,7 @@ private:
     std::ofstream log_file;
     bool is_leader;
     bool running;
+    std::vector<int32_t> child_pids;
 
 public:
     Application(bool copy_mode = false) : shared_data(nullptr), is_leader(false), running(true) {
@@ -67,6 +69,7 @@ public:
 
     void stop() {
         running = false;
+        terminate_children();
     }
 
     void do_copy_work(int copy_type) {
@@ -273,33 +276,78 @@ private:
     }
 
     void spawn_copy(int copy_type) {
-        char* args[] = {
-            const_cast<char*>(EXECUTABLE_NAME),
-            const_cast<char*>(copy_type == 1 ? "--type=1" : "--type=2"),
-            nullptr
-        };
+        #ifdef _WIN32
+            STARTUPINFO si = { sizeof(si) };
+            PROCESS_INFORMATION pi;
 
-        int pid = spawn_child_process(EXECUTABLE_NAME, args);
-        if (pid > 0) {
-            WAIT(semaphore);
-            if (copy_type == 1) {
-                shared_data->copy1_pid = static_cast<int32_t>(pid);
-                shared_data->copy1_running = true;
-            } else {
-                shared_data->copy2_pid = static_cast<int32_t>(pid);
-                shared_data->copy2_running = true;
+            std::string cmd = std::string(EXECUTABLE_NAME) + " " +
+                            (copy_type == 1 ? "--type=1" : "--type=2");
+
+            char* cmd_line = new char[cmd.size() + 1];
+            strcpy(cmd_line, cmd.c_str());
+
+            if (CreateProcess(NULL, cmd_line, NULL, NULL, FALSE,
+                            0, NULL, NULL, &si, &pi)) {
+
+                WAIT(semaphore);
+                if (copy_type == 1) {
+                    shared_data->copy1_pid = static_cast<int32_t>(pi.dwProcessId);
+                    shared_data->copy1_running = true;
+                } else {
+                    shared_data->copy2_pid = static_cast<int32_t>(pi.dwProcessId);
+                    shared_data->copy2_running = true;
+                }
+                POST(semaphore);
+
+                child_pids.push_back(static_cast<int32_t>(pi.dwProcessId));
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
             }
-            POST(semaphore);
-        } else {
-            WAIT(semaphore);
-            if (copy_type == 1) {
-                shared_data->copy1_running = false;
-            } else {
-                shared_data->copy2_running = false;
+
+            delete[] cmd_line;
+        #else
+            pid_t pid = fork();
+            if (pid == 0) {
+                char* args[] = {
+                    const_cast<char*>(EXECUTABLE_NAME),
+                    const_cast<char*>(copy_type == 1 ? "--type=1" : "--type=2"),
+                    nullptr
+                };
+                execvp(EXECUTABLE_NAME, args);
+                exit(1);
+            } else if (pid > 0) {
+                WAIT(semaphore);
+                if (copy_type == 1) {
+                    shared_data->copy1_pid = static_cast<int32_t>(pid);
+                    shared_data->copy1_running = true;
+                } else {
+                    shared_data->copy2_pid = static_cast<int32_t>(pid);
+                    shared_data->copy2_running = true;
+                }
+                POST(semaphore);
+
+                child_pids.push_back(static_cast<int32_t>(pid));
             }
-            POST(semaphore);
-            std::cerr << "Failed to spawn Copy_" << copy_type << std::endl;
+        #endif
+    }
+
+    void terminate_children() {
+        for (int32_t pid : child_pids) {
+            if (pid > 0) {
+                #ifdef _WIN32
+                    HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+                    if (hProcess) {
+                        TerminateProcess(hProcess, 0);
+                        CloseHandle(hProcess);
+                    }
+                #else
+                    kill(pid, SIGTERM);
+                #endif
+            }
         }
+        child_pids.clear();
+
+        SLEEP_MS(500);
     }
 
     void cleanup() {
@@ -317,7 +365,9 @@ Application* global_app = nullptr;
 
 void signal_handler(int signal) {
     std::cout << "\nReceived signal " << signal << ", shutting down..." << std::endl;
-    if (global_app) global_app->stop();
+    if (global_app) {
+        global_app->stop();
+    }
 }
 
 int main(int argc, char* argv[]) {
