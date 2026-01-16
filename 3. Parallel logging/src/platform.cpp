@@ -2,9 +2,6 @@
 #include <cstring>
 #include <cerrno>
 
-// ==================== РЕАЛИЗАЦИЯ ДЛЯ ВСЕХ ПЛАТФОРМ ====================
-
-// ---------- Разделяемая память ----------
 SharedMemoryHandle create_shared_memory(const char* name, size_t size) {
 #ifdef _WIN32
     HANDLE hMapFile = CreateFileMapping(
@@ -35,7 +32,6 @@ SharedMemoryHandle create_shared_memory(const char* name, size_t size) {
         return nullptr;
     }
 
-    // Обертка для POSIX
     struct PosixSharedMemory* shm = new PosixSharedMemory;
     shm->fd = fd;
     shm->addr = nullptr;
@@ -85,7 +81,6 @@ void close_shared_memory(SharedMemoryHandle handle) {
 #endif
 }
 
-// ---------- Семафоры ----------
 SemaphoreHandle create_semaphore(const char* name, int initial) {
 #ifdef _WIN32
     return CreateSemaphore(NULL, initial, 1, name);
@@ -130,7 +125,6 @@ void close_semaphore(SemaphoreHandle sem) {
 #endif
 }
 
-// ---------- Мьютексы ----------
 MutexHandle create_mutex(const char* name) {
 #ifdef _WIN32
     return CreateMutex(NULL, FALSE, name);
@@ -172,7 +166,6 @@ void close_mutex(MutexHandle mutex) {
 #endif
 }
 
-// ---------- Барьеры ----------
 BarrierHandle create_barrier(int count) {
 #ifdef _WIN32
     #if _WIN32_WINNT >= 0x0602
@@ -214,7 +207,6 @@ void close_barrier(BarrierHandle barrier) {
 #endif
 }
 
-// ---------- Потоки ----------
 struct ThreadData {
     void* (*func)(void*);
     void* arg;
@@ -225,7 +217,6 @@ DWORD WINAPI thread_wrapper_win(LPVOID param) {
     ThreadData* data = static_cast<ThreadData*>(param);
     void* result = data->func(data->arg);
     delete data;
-    // Исправленное приведение типов для 64-битного MinGW
     return static_cast<DWORD>(reinterpret_cast<uintptr_t>(result));
 }
 #else
@@ -267,16 +258,19 @@ void join_thread(ThreadHandle thread) {
 #endif
 }
 
-// ---------- Утилиты ----------
 ProcessID get_current_pid() {
-    return GET_PID();  // Используем макрос из platform.h
+    return GET_PID();
 }
 
 void sleep_ms(int milliseconds) {
-    SLEEP_MS(milliseconds);  // Используем макрос из platform.h
+#ifdef _WIN32
+    Sleep(milliseconds);
+#else
+    // usleep принимает микросекунды (1 мс = 1000 мкс)
+    usleep(milliseconds * 1000);
+#endif
 }
 
-// ---------- Запуск дочернего процесса ----------
 bool spawn_child_process(const char* program, char* const argv[]) {
 #ifdef _WIN32
     STARTUPINFO si = { sizeof(si) };
@@ -308,24 +302,3 @@ bool spawn_child_process(const char* program, char* const argv[]) {
     return false;
 #endif
 }
-
-// ---------- POSIX структуры (только для POSIX) ----------
-#ifndef _WIN32
-struct PosixMutex {
-    pthread_mutex_t mutex;
-    pthread_mutexattr_t attr;
-};
-
-struct PosixSemaphore {
-    sem_t* sem;
-};
-
-struct PosixSharedMemory {
-    int fd;
-    void* addr;
-};
-
-struct PosixBarrier {
-    pthread_barrier_t barrier;
-};
-#endif

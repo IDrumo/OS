@@ -25,13 +25,12 @@
     // Windows функции
     #define GET_PID() GetCurrentProcessId()
     #define SLEEP_MS(ms) Sleep(ms)
-    #define CREATE_PROCESS(cmd) CreateProcess(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)
 
     // Имена объектов
     #define SHM_NAME "Local\\MyAppSharedMemory"
-    #define SEM_NAME "Global\\MyAppSemaphore"
-    #define MUTEX_NAME "Global\\MyAppMutex"
-    #define BARRIER_NAME "Global\\MyAppBarrier"
+    #define SEM_NAME "Local\\MyAppSemaphore"
+    #define MUTEX_NAME "Local\\MyAppMutex"
+    #define BARRIER_NAME "Local\\MyAppBarrier"
 
 #else
     #define PLATFORM_WINDOWS 0
@@ -44,16 +43,30 @@
     #include <sys/mman.h>
     #include <sys/stat.h>
     #include <fcntl.h>
+    #include <semaphore.h>
 
     // POSIX типы
     typedef pid_t ProcessID;
     typedef pthread_t ThreadHandle;
 
-    // POSIX структуры (скрыты в .cpp)
-    struct PosixMutex;
-    struct PosixSemaphore;
-    struct PosixSharedMemory;
-    struct PosixBarrier;
+    // POSIX структуры (полное определение в platform.h)
+    struct PosixMutex {
+        pthread_mutex_t mutex;
+        pthread_mutexattr_t attr;
+    };
+
+    struct PosixSemaphore {
+        sem_t* sem;
+    };
+
+    struct PosixSharedMemory {
+        int fd;
+        void* addr;
+    };
+
+    struct PosixBarrier {
+        pthread_barrier_t barrier;
+    };
 
     typedef PosixMutex* MutexHandle;
     typedef PosixSemaphore* SemaphoreHandle;
@@ -63,7 +76,6 @@
     // POSIX функции
     #define GET_PID() getpid()
     #define SLEEP_MS(ms) usleep((ms) * 1000)
-    #define CREATE_PROCESS(cmd) (fork() == 0 ? execvp(cmd[0], cmd) : -1)
 
     // Имена объектов
     #define SHM_NAME "/myapp_shm"
@@ -72,15 +84,10 @@
     #define BARRIER_NAME NULL
 #endif
 
-// ==================== УНИВЕРСАЛЬНЫЕ МАКРОСЫ ====================
-// Эти макросы работают одинаково на всех платформах
 #define LOCK(mutex) lock_mutex(mutex)
 #define UNLOCK(mutex) unlock_mutex(mutex)
 #define WAIT(sem) wait_semaphore(sem)
 #define POST(sem) post_semaphore(sem)
-
-// ==================== ОБЩИЕ ОБЪЯВЛЕНИЯ ФУНКЦИЙ ====================
-// Все функции реализованы в platform.cpp с #ifdef внутри
 
 // Разделяемая память
 SharedMemoryHandle create_shared_memory(const char* name, size_t size);
@@ -116,4 +123,4 @@ void sleep_ms(int milliseconds);
 // Запуск дочернего процесса (универсальный интерфейс)
 bool spawn_child_process(const char* program, char* const argv[]);
 
-#endif // PLATFORM_H
+#endif
