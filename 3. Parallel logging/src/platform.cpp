@@ -276,15 +276,31 @@ bool spawn_child_process(const char* program, char* const argv[]) {
     STARTUPINFO si = { sizeof(si) };
     PROCESS_INFORMATION pi;
 
-    // Создаем командную строку
     std::string cmd = program;
     for (int i = 1; argv[i] != nullptr; i++) {
         cmd += " ";
         cmd += argv[i];
     }
 
-    if (CreateProcess(NULL, const_cast<LPSTR>(cmd.c_str()),
-                     NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+    char* cmd_line = new char[cmd.size() + 1];
+    strcpy(cmd_line, cmd.c_str());
+
+    BOOL success = CreateProcess(
+        NULL,           // Имя модуля (используем командную строку)
+        cmd_line,       // Командная строка с аргументами
+        NULL,           // Дескриптор процесса не наследуется
+        NULL,           // Дескриптор потока не наследуется
+        FALSE,          // Дескрипторы не наследуются
+        0,              // Флаги создания
+        NULL,           // окружение родителя
+        NULL,           // текущий каталог
+        &si,            // STARTUPINFO
+        &pi             // PROCESS_INFORMATION
+    );
+
+    delete[] cmd_line;
+
+    if (success) {
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
         return true;

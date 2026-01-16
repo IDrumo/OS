@@ -13,7 +13,6 @@
 
 const char* LOG_FILE = "app.log";
 
-// Структура для разделяемых данных
 struct SharedData {
     volatile int32_t counter;
     volatile int32_t leader_pid;
@@ -36,12 +35,14 @@ private:
     bool running;
 
 public:
-    Application() : shared_data(nullptr), is_leader(false), running(true) {
-        open_log_file();
+    Application(bool copy_mode = false) : shared_data(nullptr), is_leader(false), running(true) {
         init_shared_memory();
         init_synchronization();
-        determine_leader();
-        log_start();
+        if (!copy_mode) {
+            open_log_file();
+            determine_leader();
+            log_start();
+        }
     }
 
     ~Application() {
@@ -49,7 +50,6 @@ public:
     }
 
     void run() {
-        // Основные потоки
         ThreadHandle timer_thread = create_thread(timer_increment_wrapper, this);
         ThreadHandle input_thread = create_thread(input_listener_wrapper, this);
 
@@ -57,12 +57,10 @@ public:
             ThreadHandle logger_thread = create_thread(logger_wrapper, this);
             ThreadHandle spawner_thread = create_thread(spawner_wrapper, this);
 
-            // Ожидаем завершения потоков лидера
             join_thread(logger_thread);
             join_thread(spawner_thread);
         }
 
-        // Ожидаем завершения общих потоков
         join_thread(timer_thread);
         join_thread(input_thread);
     }
@@ -75,21 +73,15 @@ public:
         WAIT(semaphore);
         if (copy_type == 1) {
             shared_data->counter += 10;
-            std::cout << "Copy_1: Increased counter by 10. New value: "
-                      << shared_data->counter << std::endl;
         } else if (copy_type == 2) {
             shared_data->counter *= 2;
-            std::cout << "Copy_2: Multiplied counter by 2. New value: "
-                      << shared_data->counter << std::endl;
         }
         POST(semaphore);
 
         if (copy_type == 2) {
-            SLEEP_MS(2000);  // 2 секунды
+            SLEEP_MS(2000);
             WAIT(semaphore);
             shared_data->counter /= 2;
-            std::cout << "Copy_2: Divided counter by 2. New value: "
-                      << shared_data->counter << std::endl;
             POST(semaphore);
         }
     }
@@ -102,6 +94,14 @@ public:
             shared_data->copy2_running = false;
         }
         POST(semaphore);
+    }
+
+    void log_message(const std::string& message) {
+        LOCK(log_mutex);
+        if (log_file.is_open()) {
+            log_file << get_current_time() << " - " << message << std::endl;
+        }
+        UNLOCK(log_mutex);
     }
 
     static std::string get_current_time() {
@@ -158,7 +158,6 @@ private:
     }
 
     void init_shared_memory() {
-        // Закрыть существующий handle, если есть
         #ifdef _WIN32
             HANDLE h = OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, SHM_NAME);
             if (h) {
@@ -179,7 +178,6 @@ private:
             exit(1);
         }
 
-        // Инициализация, если мы первые
         LOCK(log_mutex);
         if (shared_data->leader_pid == 0) {
             shared_data->counter = 0;
@@ -190,8 +188,6 @@ private:
             shared_data->copy2_running = false;
             shared_data->last_copy1_start = 0;
             shared_data->last_copy2_start = 0;
-
-            std::cout << "Initialized shared memory. I am the leader." << std::endl;
         }
         UNLOCK(log_mutex);
     }
@@ -203,9 +199,6 @@ private:
 
     void determine_leader() {
         is_leader = (shared_data->leader_pid == static_cast<int32_t>(GET_PID()));
-        std::cout << "I am " << (is_leader ? "LEADER" : "FOLLOWER")
-                  << ". Leader PID: " << shared_data->leader_pid
-                  << ", My PID: " << GET_PID() << std::endl;
     }
 
     void log_start() {
@@ -226,7 +219,7 @@ private:
 
     void input_listener_thread() {
         while (running) {
-            std::cout << "Enter new counter value: \n";
+            std::cout << "Enter new counter value: ";
             int new_value;
             if (std::cin >> new_value) {
                 WAIT(semaphore);
@@ -270,13 +263,10 @@ private:
             POST(semaphore);
 
             if (copy1_running || copy2_running) {
-                std::string msg = "Previous copies still running. Skipping spawn.";
-                log_message(msg);
-                std::cout << msg << std::endl;
+                log_message("Previous copies still running. Skipping spawn.");
                 continue;
             }
 
-            std::cout << "Spawning copies..." << std::endl;
             spawn_copy(1);
             spawn_copy(2);
         }
@@ -289,20 +279,17 @@ private:
             nullptr
         };
 
-        std::cout << "Attempting to spawn Copy_" << copy_type
-                  << " with command: " << args[0] << " " << args[1] << std::endl;
-
-        if (spawn_child_process(EXECUTABLE_NAME, args)) {
+        int pid = spawn_child_process(EXECUTABLE_NAME, args);
+        if (pid > 0) {
             WAIT(semaphore);
             if (copy_type == 1) {
-                shared_data->copy1_pid = 0;
+                shared_data->copy1_pid = static_cast<int32_t>(pid);
                 shared_data->copy1_running = true;
             } else {
-                shared_data->copy2_pid = 0;
+                shared_data->copy2_pid = static_cast<int32_t>(pid);
                 shared_data->copy2_running = true;
             }
             POST(semaphore);
-            std::cout << "Successfully spawned Copy_" << copy_type << std::endl;
         } else {
             WAIT(semaphore);
             if (copy_type == 1) {
@@ -313,12 +300,6 @@ private:
             POST(semaphore);
             std::cerr << "Failed to spawn Copy_" << copy_type << std::endl;
         }
-    }
-
-    void log_message(const std::string& message) {
-        LOCK(log_mutex);
-        log_file << get_current_time() << " - " << message << std::endl;
-        UNLOCK(log_mutex);
     }
 
     void cleanup() {
@@ -340,7 +321,6 @@ void signal_handler(int signal) {
 }
 
 int main(int argc, char* argv[]) {
-    // Обработчики сигналов
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
@@ -360,30 +340,24 @@ int main(int argc, char* argv[]) {
     }
 
     if (is_copy) {
-        // Код для копии
-        Application copy_app;
+        Application copy_app(true);
 
         std::string start_msg = "Copy_" + std::to_string(copy_type) +
                                " PID:" + std::to_string(GET_PID()) +
                                ". Timestamp: " + Application::get_current_time();
+        copy_app.log_message(start_msg);
         std::cout << start_msg << std::endl;
 
-        // Выполняем работу копии
         copy_app.do_copy_work(copy_type);
-
-        // Сбрасываем флаг завершения
         copy_app.mark_copy_finished(copy_type);
 
         std::string exit_msg = "Copy_" + std::to_string(copy_type) +
                               " Exit timestamp: " + Application::get_current_time();
+        copy_app.log_message(exit_msg);
         std::cout << exit_msg << std::endl;
 
         return 0;
     } else {
-        // Основная программа
-        Application app;
-        global_app = &app;
-
         std::cout << "=== Parallel Process Manager ===" << std::endl;
         std::cout << "Commands:" << std::endl;
         std::cout << "  - Enter any number to set counter value" << std::endl;
@@ -391,6 +365,8 @@ int main(int argc, char* argv[]) {
         std::cout << "Log file: " << LOG_FILE << std::endl;
         std::cout << "================================" << std::endl;
 
+        Application app;
+        global_app = &app;
         app.run();
     }
 
