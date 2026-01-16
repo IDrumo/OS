@@ -31,6 +31,7 @@
     #define SEM_NAME "Local\\MyAppSemaphore"
     #define MUTEX_NAME "Local\\MyAppMutex"
     #define BARRIER_NAME "Local\\MyAppBarrier"
+    #define EXECUTABLE_NAME "app.exe"
 
 #else
     #define PLATFORM_WINDOWS 0
@@ -82,6 +83,7 @@
     #define SEM_NAME "/myapp_sem"
     #define MUTEX_NAME "/myapp_mutex"
     #define BARRIER_NAME NULL
+    #define EXECUTABLE_NAME "./app"
 #endif
 
 #define LOCK(mutex) lock_mutex(mutex)

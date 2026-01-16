@@ -283,27 +283,27 @@ private:
     }
 
     void spawn_copy(int copy_type) {
-        // Флаг запуска
-        WAIT(semaphore);
-        if (copy_type == 1) {
-            shared_data->copy1_running = true;
-            shared_data->copy1_pid = 0;
-        } else {
-            shared_data->copy2_running = true;
-            shared_data->copy2_pid = 0;
-        }
-        POST(semaphore);
-
         char* args[] = {
-            const_cast<char*>("app.exe"),
+            const_cast<char*>(EXECUTABLE_NAME),
             const_cast<char*>(copy_type == 1 ? "--type=1" : "--type=2"),
             nullptr
         };
 
-        if (spawn_child_process("app.exe", args)) {
-            std::cout << "Spawned Copy_" << copy_type << std::endl;
+        std::cout << "Attempting to spawn Copy_" << copy_type
+                  << " with command: " << args[0] << " " << args[1] << std::endl;
+
+        if (spawn_child_process(EXECUTABLE_NAME, args)) {
+            WAIT(semaphore);
+            if (copy_type == 1) {
+                shared_data->copy1_pid = 0;
+                shared_data->copy1_running = true;
+            } else {
+                shared_data->copy2_pid = 0;
+                shared_data->copy2_running = true;
+            }
+            POST(semaphore);
+            std::cout << "Successfully spawned Copy_" << copy_type << std::endl;
         } else {
-            // Если не удалось запустить, сбрасываем флаг
             WAIT(semaphore);
             if (copy_type == 1) {
                 shared_data->copy1_running = false;

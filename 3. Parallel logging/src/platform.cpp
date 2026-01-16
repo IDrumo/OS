@@ -295,7 +295,8 @@ bool spawn_child_process(const char* program, char* const argv[]) {
     if (pid == 0) {
         // Дочерний процесс
         execvp(program, argv);
-        exit(1);  // Если execvp не удался
+        std::cerr << "execvp failed: " << strerror(errno) << std::endl;
+        exit(EXIT_FAILURE);
     } else if (pid > 0) {
         return true;
     }
