@@ -1,46 +1,52 @@
-# Temperature Monitoring System
+# Temperature Logger
 
-## Описание
-Кроссплатформенная программа для мониторинга температуры с COM-порта.
-
-## Возможности
-- Чтение температуры с серийного порта/USB
-- Валидация данных (диапазон, контрольная сумма)
-- Логирование в три файла:
-  - `measurements.log` - все измерения за 24 часа
-  - `hourly.log` - средние за час за 30 дней
-  - `daily.log` - средние за день за год
-- Ротация лог-файлов
-- Режим симуляции для тестирования
+Кроссплатформенная программа для логирования температурных данных с устройства или симулятора.
 
 ## Сборка
+
 ```bash
-mkdir build
-cd build
-cmake .. -G "MinGW Makefiles"  # для Windows
-cmake ..                        # для Linux
-cmake --build .
+mkdir build && cd build
+cmake .. && make
 ```
 
-## Использование
-### Основная программа:
-```bash
-# С реальным устройством
-./temperature_monitor COM1
+## Запуск
 
-# В режиме симуляции
-./temperature_monitor --simulate
-
-# С указанием скорости порта
-./temperature_monitor COM1 --baud 9600
+### С симулятором устройства
+**CMD (Windows):**
+```cmd
+device_simulator.exe | temp_logger.exe
 ```
 
-### Симулятор устройства:
-```bash
-./simulator COM1 1000
+**PowerShell:**
+```powershell
+cmd /c "device_simulator.exe | temp_logger.exe"
 ```
 
-## Тестирование
+**Bash (Linux/macOS):**
 ```bash
-./test_monitor.exe      # Unit-тесты
+./device_simulator | ./temp_logger
+```
+
+### С реальным устройством
+```bash
+# Linux/macOS
+./temp_logger --port /dev/ttyUSB0
+
+# Windows
+temp_logger.exe --port COM3
+```
+
+## Просмотр логов
+
+Логи сохраняются в папке `logs/`:
+- `measurements.log` — все измерения за последние 24 часа
+- `hourly.log` — средние за час за последние 30 дней
+- `daily.log` — средние за день за текущий год
+
+```bash
+# Посмотреть последние измерения
+tail -f logs/measurements.log
+
+# Показать все логи
+ls logs/
 ```
