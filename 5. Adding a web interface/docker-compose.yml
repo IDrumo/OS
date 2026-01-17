@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: temperature_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-temperature}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-temperature}
+      POSTGRES_DB: ${POSTGRES_DB:-temperature}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - temperature-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-temperature}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: ./web
+    container_name: temperature_web
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-temperature}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-temperature}
+      POSTGRES_DB: ${POSTGRES_DB:-temperature}
+    ports:
+      - "5000:5000"
+    networks:
+      - temperature-network
+    volumes:
+      - ./web:/app
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  temperature-network:
+    driver: bridge
