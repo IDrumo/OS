@@ -9,7 +9,7 @@ include_directories(
         third_party/sqlite
 )
 
-# Основная программа (все в одном файле)
+# Основная программа
 add_executable(temp_logger src/main.cpp third_party/sqlite/sqlite3.c)
 
 # Симулятор
@@ -23,8 +23,9 @@ endif()
 
 # Копируем index.html в директорию сборки
 add_custom_command(TARGET temp_logger POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-        index.html
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/index.html
         ${CMAKE_CURRENT_BINARY_DIR}/index.html
-        COMMENT "Adding web interface"
+        COMMENT "Copying index.html to build directory"
 )

@@ -29,7 +29,6 @@ using namespace chrono;
 
 atomic<bool> stop_flag{false};
 
-// ========== БАЗА ДАННЫХ ==========
 class Database {
     sqlite3* db = nullptr;
 public:
@@ -70,7 +69,6 @@ public:
             time_t ts = sqlite3_column_int64(stmt, 0);
             double temp = sqlite3_column_double(stmt, 1);
 
-            // Форматируем время
             tm timeinfo;
             #ifdef _WIN32
                 gmtime_s(&timeinfo, &ts);
@@ -127,7 +125,6 @@ public:
         return json.str();
     }
 
-    // Метод для проверки наличия данных
     bool hasData() {
         const char* sql = "SELECT COUNT(*) FROM measurements;";
         sqlite3_stmt* stmt;
@@ -143,7 +140,6 @@ public:
     ~Database() { close(); }
 };
 
-// ========== HTTP СЕРВЕР ==========
 class WebServer {
     Database& db;
     int port;
@@ -183,14 +179,9 @@ class WebServer {
             }
         }
 
-        // Debug output
-        cout << "Parsing time: " << decoded << endl;
-
-        // Пробуем разные форматы
         tm tm_struct = {};
         int year, month, day, hour, minute, second;
 
-        // Формат: 2026-01-19T01:57:00Z (с секундами)
         int result = sscanf(decoded.c_str(), "%d-%d-%dT%d:%d:%dZ",
                            &year, &month, &day, &hour, &minute, &second);
 
@@ -202,11 +193,7 @@ class WebServer {
             tm_struct.tm_min = minute;
             tm_struct.tm_sec = second;
             tm_struct.tm_isdst = -1;
-
-            cout << "Parsed as full format: " << year << "-" << month << "-" << day
-                 << " " << hour << ":" << minute << ":" << second << endl;
         }
-        // Формат: 2026-01-19T01:57 (без секунд)
         else if (sscanf(decoded.c_str(), "%d-%d-%dT%d:%d",
                         &year, &month, &day, &hour, &minute) == 5) {
             tm_struct.tm_year = year - 1900;
@@ -216,12 +203,8 @@ class WebServer {
             tm_struct.tm_min = minute;
             tm_struct.tm_sec = 0;
             tm_struct.tm_isdst = -1;
-
-            cout << "Parsed as no-seconds format: " << year << "-" << month << "-" << day
-                 << " " << hour << ":" << minute << endl;
         }
         else {
-            cout << "Failed to parse time string" << endl;
             return 0;
         }
 
@@ -232,11 +215,9 @@ class WebServer {
         #endif
 
         if (timestamp == -1) {
-            cout << "Time conversion failed" << endl;
             return 0;
         }
 
-        cout << "Converted to timestamp: " << timestamp << endl;
         return timestamp;
     }
 
@@ -247,9 +228,6 @@ class WebServer {
         buffer[bytesRead] = '\0';
 
         string request(buffer);
-        cout << "\n=== HTTP Request ===" << endl;
-        cout << request << endl;
-        cout << "===================" << endl;
 
         istringstream iss(request);
         string method, path, http_version;
@@ -277,9 +255,6 @@ class WebServer {
                         string fromStr = query.substr(fromPos + 5, toPos - fromPos - 5);
                         string toStr = query.substr(toPos + 4);
 
-                        cout << "From: " << fromStr << endl;
-                        cout << "To: " << toStr << endl;
-
                         time_t from = parseTime(fromStr);
                         time_t to = parseTime(toStr);
 
@@ -290,15 +265,12 @@ class WebServer {
                                       "Access-Control-Allow-Origin: *\r\n"
                                       "Content-Length: " + to_string(json.size()) + "\r\n"
                                       "\r\n" + json;
-                            cout << "Response JSON length: " << json.size() << endl;
-                            cout << "Response JSON preview: " << json.substr(0, min((size_t)200, json.size())) << "..." << endl;
                         } else {
                             response = "HTTP/1.1 400 Bad Request\r\n"
                                       "Content-Type: text/plain\r\n"
                                       "Content-Length: 26\r\n"
                                       "\r\n"
                                       "Invalid time format provided";
-                            cout << "Invalid time format" << endl;
                         }
                     } else {
                         response = "HTTP/1.1 400 Bad Request\r\n"
@@ -306,7 +278,6 @@ class WebServer {
                                   "Content-Length: 17\r\n"
                                   "\r\n"
                                   "Missing parameters";
-                        cout << "Missing parameters" << endl;
                     }
                 } else {
                     response = "HTTP/1.1 400 Bad Request\r\n"
@@ -314,11 +285,9 @@ class WebServer {
                               "Content-Length: 17\r\n"
                               "\r\n"
                               "Missing query string";
-                    cout << "Missing query string" << endl;
                 }
             }
             else {
-                // Статический файл
                 if (path == "/") path = "/index.html";
                 string filePath = "." + path;
                 string content = readFile(filePath);
@@ -338,7 +307,6 @@ class WebServer {
             }
         }
 
-        cout << "Sending response (" << response.size() << " bytes)" << endl;
         send(clientSocket, response.c_str(), response.size(), 0);
         close(clientSocket);
     }
@@ -402,26 +370,22 @@ public:
     }
 };
 
-// Функция для добавления тестовых данных
 void addTestData(Database& db) {
     time_t now = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
-    // Добавляем данные за последние 24 часа
     for (int i = 0; i < 24; i++) {
-        time_t ts = now - (23 - i) * 3600; // Последние 24 часа
-        double temp = 20.0 + (rand() % 1000) / 100.0; // Случайная температура 20-30°C
+        time_t ts = now - (23 - i) * 3600;
+        double temp = 20.0 + (rand() % 1000) / 100.0;
         db.insert(ts, temp);
         cout << "Added test data: " << ts << " -> " << temp << "°C" << endl;
     }
 }
 
-// ========== ОСНОВНАЯ ПРОГРАММА ==========
 int main(int argc, char* argv[]) {
     #ifdef _WIN32
         SetConsoleOutputCP(65001);
     #endif
 
-    // Установка обработчика прерывания
     #ifdef _WIN32
         SetConsoleCtrlHandler([](DWORD event) -> BOOL {
             if (event == CTRL_C_EVENT) {
@@ -441,26 +405,18 @@ int main(int argc, char* argv[]) {
         string arg = argv[i];
         if (arg == "--http-port" && i + 1 < argc) http_port = stoi(argv[++i]);
         else if (arg == "--db" && i + 1 < argc) db_path = argv[++i];
-        else if (arg == "--help") {
-            cout << "Использование: temp_logger [--http-port N] [--db файл.db]" << endl;
-            return 0;
-        }
     }
 
-    // База данных
     Database db;
     if (!db.open(db_path)) {
         cerr << "Ошибка открытия БД!" << endl;
         return 1;
     }
 
-    // Проверяем, есть ли данные
     if (!db.hasData()) {
-        cout << "База данных пуста, добавляем тестовые данные..." << endl;
         addTestData(db);
     }
 
-    // HTTP сервер
     WebServer server(db, http_port);
     thread server_thread([&server]() { server.start(); });
     this_thread::sleep_for(milliseconds(500));
@@ -480,7 +436,6 @@ int main(int argc, char* argv[]) {
             string time_str = line.substr(0, comma);
             string temp_str = line.substr(comma + 1);
 
-            // Парсим время
             tm tm_struct = {};
             if (sscanf(time_str.c_str(), "%d-%d-%dT%d:%d:%dZ",
                        &tm_struct.tm_year, &tm_struct.tm_mon, &tm_struct.tm_mday,
@@ -500,13 +455,11 @@ int main(int argc, char* argv[]) {
 
             try {
                 double temp = stod(temp_str);
-                // Валидация температуры
                 if (temp < -50.0 || temp > 100.0) {
                     cerr << "ПРЕДУПРЕЖДЕНИЕ: Игнорируем нереальное значение: " << temp << "°C" << endl;
                     continue;
                 }
 
-                // Дополнительная проверка на резкие скачки (более 10°C за секунду)
                 static double last_valid_temp = temp;
                 if (abs(temp - last_valid_temp) > 10.0) {
                     cerr << "ПРЕДУПРЕЖДЕНИЕ: Слишком резкий скачок температуры: "
@@ -526,8 +479,7 @@ int main(int argc, char* argv[]) {
             this_thread::sleep_for(milliseconds(100));
         }
     }
-    
-    cout << "Остановка..." << endl;
+
     server.stop();
     if (server_thread.joinable()) server_thread.join();
     
