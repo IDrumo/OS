@@ -53,22 +53,46 @@ void WebServer::addMeasurement(time_t timestamp, double temperature) {
     }
 }
 
+std::string urlDecode(const std::string& str) {
+    std::string result;
+    result.reserve(str.size());
+
+    for (size_t i = 0; i < str.size(); ++i) {
+        if (str[i] == '%' && i + 2 < str.size()) {
+            int hex1 = std::tolower(str[i + 1]);
+            int hex2 = std::tolower(str[i + 2]);
+
+            int value = 0;
+            if (hex1 >= '0' && hex1 <= '9') value += (hex1 - '0') * 16;
+            else if (hex1 >= 'a' && hex1 <= 'f') value += (hex1 - 'a' + 10) * 16;
+
+            if (hex2 >= '0' && hex2 <= '9') value += (hex2 - '0');
+            else if (hex2 >= 'a' && hex2 <= 'f') value += (hex2 - 'a' + 10);
+
+            result += static_cast<char>(value);
+            i += 2;
+        } else if (str[i] == '+') {
+            result += ' ';
+        } else {
+            result += str[i];
+        }
+    }
+
+    return result;
+}
+
 time_t WebServer::parseIsoTime(const std::string& isoTime) {
-    if (isoTime.empty()) return 0;
+    std::string decoded = urlDecode(isoTime);
 
     struct tm tm_struct = {};
-
-    // Формат: YYYY-MM-DDTHH:MM:SSZ
-    if (sscanf(isoTime.c_str(), "%d-%d-%dT%d:%d:%dZ",
+    if (sscanf(decoded.c_str(), "%d-%d-%dT%d:%d:%dZ",
                &tm_struct.tm_year, &tm_struct.tm_mon, &tm_struct.tm_mday,
-               &tm_struct.tm_hour, &tm_struct.tm_min, &tm_struct.tm_sec) == 6) {
-        tm_struct.tm_year -= 1900;
-        tm_struct.tm_mon -= 1;
-        tm_struct.tm_isdst = -1;
-    } else {
-        std::cout << "Failed to parse time: " << isoTime << std::endl;
+               &tm_struct.tm_hour, &tm_struct.tm_min, &tm_struct.tm_sec) != 6) {
         return 0;
-    }
+               }
+    tm_struct.tm_year -= 1900;
+    tm_struct.tm_mon -= 1;
+    tm_struct.tm_isdst = -1;
 
 #ifdef _WIN32
     return _mkgmtime(&tm_struct);
