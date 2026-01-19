@@ -13,83 +13,174 @@
         .stats { display: flex; gap: 20px; margin: 20px 0; }
         .stat-card { padding: 10px; background: #f0f0f0; border-radius: 5px; }
         .error { color: red; padding: 10px; background: #ffe6e6; border-radius: 5px; }
+        .interval-buttons button {
+            margin-right: 5px;
+            padding: 5px 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .interval-buttons button:hover {
+            background: #45a049;
+        }
+        .time-info {
+            margin: 10px 0;
+            padding: 5px;
+            background: #f0f0f0;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        #realtimeBtn.active { background: #ff4444; }
+        #autoUpdateBtn.active { background: #ff4444; }
     </style>
 </head>
 <body>
 <h1>Температурный монитор</h1>
 
+<div class="time-info">
+    <strong>Текущее время (UTC):</strong> <span id="serverTime"></span> |
+    <strong>Ваше время:</strong> <span id="localTime"></span>
+</div>
+
 <div class="controls">
     <label>С: <input type="datetime-local" id="from"></label>
     <label>По: <input type="datetime-local" id="to"></label>
-    <button onclick="loadData()">Загрузить</button>
-    <button onclick="loadLastDay()">Последние 24ч</button>
-    <button onclick="autoUpdate()">Автообновление</button>
-    <button onclick="loadTestData()">Тестовые данные</button>
+
+    <div style="margin: 10px 0;">
+        <button onclick="loadData()">Загрузить</button>
+        <div class="interval-buttons">
+            <button onclick="setIntervalHours(1)">1 час</button>
+            <button onclick="setIntervalHours(24)">24 часа</button>
+        </div>
+        <button onclick="toggleRealtime()" id="realtimeBtn">Реальное время</button>
+        <button onclick="toggleAutoUpdate()" id="autoUpdateBtn">Автообновление</button>
+    </div>
 </div>
 
 <div class="chart-container">
     <canvas id="chart"></canvas>
 </div>
 
-<div class="stats" id="stats"></div>
+<div class="stats" id="stats">
+    <div class="stat-card">Измерений: 0</div>
+    <div class="stat-card">Средняя: 0°C</div>
+    <div class="stat-card">Мин: 0°C</div>
+    <div class="stat-card">Макс: 0°C</div>
+</div>
+
 <div id="error" class="error" style="display: none;"></div>
 
 <script>
+    // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
     let chart = null;
-    let autoUpdateInterval = null;
-    let originalDates = [];
+    let updateInterval = null;
+    let isRealtime = false;
+    let lastDataTime = 0;
 
-    function formatDateTime(d) {
-        return d.toISOString().slice(0, 16);
+    // ========== ФУНКЦИИ ФОРМАТИРОВАНИЯ ==========
+    function formatLocal(d) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
     }
 
-    function formatDateTimeForApi(d) {
-        // Используем UTC время
+    function formatUTC(d) {
         const year = d.getUTCFullYear();
         const month = String(d.getUTCMonth() + 1).padStart(2, '0');
         const day = String(d.getUTCDate()).padStart(2, '0');
         const hours = String(d.getUTCHours()).padStart(2, '0');
         const minutes = String(d.getUTCMinutes()).padStart(2, '0');
         const seconds = String(d.getUTCSeconds()).padStart(2, '0');
-
         return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`;
     }
 
-    // Замените функцию setDefaultRange
-    function setDefaultRange() {
+    // ========== УСТАНОВКА ИНТЕРВАЛОВ ==========
+    function setIntervalHours(hours) {
+        stopUpdates();
         const now = new Date();
-        const to = new Date(now);
-        const from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-        // Устанавливаем в формате YYYY-MM-DDThh:mm
-        document.getElementById('from').value = formatLocalDateTime(from);
-        document.getElementById('to').value = formatLocalDateTime(to);
+        const from = new Date(now.getTime() - hours * 3600000);
+        document.getElementById('from').value = formatLocal(from);
+        document.getElementById('to').value = formatLocal(now);
+        loadData();
     }
 
-    // Добавьте функцию для форматирования локального времени
-    function formatLocalDateTime(d) {
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        const hours = String(d.getHours()).padStart(2, '0');
-        const minutes = String(d.getMinutes()).padStart(2, '0');
-
-        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    // ========== УПРАВЛЕНИЕ ОБНОВЛЕНИЯМИ ==========
+    function stopUpdates() {
+        if (updateInterval) {
+            clearInterval(updateInterval);
+            updateInterval = null;
+        }
+        isRealtime = false;
+        document.getElementById('realtimeBtn').classList.remove('active');
+        document.getElementById('autoUpdateBtn').classList.remove('active');
     }
 
-    // Показать ошибку
-    function showError(message) {
-        const errorDiv = document.getElementById('error');
-        errorDiv.textContent = message;
-        errorDiv.style.display = 'block';
-        setTimeout(() => {
-            errorDiv.style.display = 'none';
-        }, 5000);
+    function toggleRealtime() {
+        const btn = document.getElementById('realtimeBtn');
+
+        if (isRealtime) {
+            stopUpdates();
+            btn.textContent = 'Реальное время';
+        } else {
+            // Останавливаем автообновление если активно
+            if (updateInterval) stopUpdates();
+
+            // Устанавливаем интервал 5 минут
+            const to = new Date();
+            const from = new Date(to.getTime() - 5 * 60 * 1000);
+            document.getElementById('from').value = formatLocal(from);
+            document.getElementById('to').value = formatLocal(to);
+
+            isRealtime = true;
+            btn.classList.add('active');
+            btn.textContent = 'Остановить';
+
+            // Загружаем сразу и каждую секунду
+            loadData();
+            updateInterval = setInterval(loadData, 2000);
+        }
     }
 
-    // Загрузка данных
+    function toggleAutoUpdate() {
+        const btn = document.getElementById('autoUpdateBtn');
+
+        if (updateInterval && !isRealtime) {
+            stopUpdates();
+            btn.textContent = 'Автообновление';
+        } else {
+            // Останавливаем реальное время если активно
+            if (isRealtime) stopUpdates();
+
+            btn.classList.add('active');
+            btn.textContent = 'Остановить';
+
+            // Функция для сдвига окна
+            function slideWindow() {
+                const from = new Date(document.getElementById('from').value);
+                const to = new Date(document.getElementById('to').value);
+                const diff = to - from;
+
+                const newTo = new Date();
+                const newFrom = new Date(newTo.getTime() - diff);
+
+                document.getElementById('from').value = formatLocal(newFrom);
+                document.getElementById('to').value = formatLocal(newTo);
+                loadData();
+            }
+
+            // Запускаем каждые 5 секунд
+            slideWindow();
+            updateInterval = setInterval(slideWindow, 5000);
+        }
+    }
+
+    // ========== ЗАГРУЗКА ДАННЫХ ==========
     async function loadData() {
-        console.log("=== loadData started ===");
         const from = document.getElementById('from').value;
         const to = document.getElementById('to').value;
 
@@ -98,47 +189,34 @@
             return;
         }
 
-        console.log("From input:", from, "To input:", to);
-
+        // Проверка дат
         const fromDate = new Date(from);
         const toDate = new Date(to);
 
-        const fromStr = formatDateTimeForApi(fromDate);
-        const toStr = formatDateTimeForApi(toDate);
+        if (fromDate >= toDate) {
+            showError("Дата 'С' должна быть раньше даты 'По'!");
+            return;
+        }
 
-        console.log("Formatted From:", fromStr, "Formatted To:", toStr);
-
+        // Формируем URL
+        const fromStr = formatUTC(fromDate);
+        const toStr = formatUTC(toDate);
         const url = `/api/range?from=${encodeURIComponent(fromStr)}&to=${encodeURIComponent(toStr)}`;
-        console.log("Fetching URL:", url);
 
         try {
-            const startTime = performance.now();
             const response = await fetch(url);
-            const endTime = performance.now();
-            console.log(`Fetch completed in ${endTime - startTime}ms`);
-
-            console.log("Response status:", response.status, response.statusText);
 
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error("Error response text:", errorText);
-                throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+                throw new Error(`HTTP ошибка: ${response.status}`);
             }
 
             const data = await response.json();
-            console.log("Data received:", data);
 
             if (data.data && data.data.length > 0) {
-                console.log(`Received ${data.data.length} data points`);
-
-                originalDates = data.data.map(d => new Date(d.t));
                 const values = data.data.map(d => d.v);
+                const dates = data.data.map(d => new Date(d.t));
 
-                console.log("First few data points:");
-                for (let i = 0; i < Math.min(3, data.data.length); i++) {
-                    console.log(`  ${data.data[i].t}: ${data.data[i].v}°C`);
-                }
-
+                // Обновляем статистику
                 const stats = {
                     count: values.length,
                     avg: values.reduce((a, b) => a + b, 0) / values.length,
@@ -147,53 +225,80 @@
                 };
 
                 document.getElementById('stats').innerHTML = `
-                    <div class="stat-card">Измерений: ${stats.count}</div>
-                    <div class="stat-card">Средняя: ${stats.avg.toFixed(2)}°C</div>
-                    <div class="stat-card">Мин: ${stats.min.toFixed(2)}°C</div>
-                    <div class="stat-card">Макс: ${stats.max.toFixed(2)}°C</div>
-                `;
+                <div class="stat-card">Измерений: ${stats.count}</div>
+                <div class="stat-card">Средняя: ${stats.avg.toFixed(2)}°C</div>
+                <div class="stat-card">Мин: ${stats.min.toFixed(2)}°C</div>
+                <div class="stat-card">Макс: ${stats.max.toFixed(2)}°C</div>
+            `;
 
-                updateChart(originalDates, values);
-            } else {
-                console.log("No data in response");
-                document.getElementById('stats').innerHTML = `
-                    <div class="stat-card" style="color: orange;">Нет данных для выбранного диапазона</div>
-                `;
+                // Обновляем график
+                updateChart(dates, values);
 
-                if (chart) {
-                    chart.data.labels = [];
-                    chart.data.datasets[0].data = [];
-                    chart.update();
-                }
+                // Запоминаем время последних данных
+                lastDataTime = Date.now();
             }
         } catch (error) {
-            console.error('Ошибка загрузки данных:', error);
-            showError('Ошибка загрузки: ' + error.message);
-            // Загружаем тестовые данные для демонстрации
-            await loadTestData();
+            console.error('Ошибка загрузки:', error);
+            if (!isRealtime) {
+                showError('Ошибка загрузки: ' + error.message);
+            }
         }
-        console.log("=== loadData finished ===");
     }
 
-    // Обновление графика
-    function updateChart(labels, data) {
-        console.log("Updating chart with", labels.length, "data points");
+    // ========== АГРЕГАЦИЯ ДАННЫХ ==========
+    function aggregateData(dates, values, maxPoints = 10) {
+        if (dates.length <= maxPoints) {
+            return { dates, values };
+        }
 
+        // Определяем интервал агрегации на основе количества точек
+        const interval = Math.ceil(dates.length / maxPoints);
+        const aggregatedDates = [];
+        const aggregatedValues = [];
+
+        for (let i = 0; i < dates.length; i += interval) {
+            const chunkDates = dates.slice(i, i + interval);
+            const chunkValues = values.slice(i, i + interval);
+
+            if (chunkDates.length > 0) {
+                // Берем среднее время в чанке
+                const avgTime = new Date(
+                    chunkDates.reduce((sum, date) => sum + date.getTime(), 0) / chunkDates.length
+                );
+
+                // Берем среднее значение в чанке
+                const avgValue = chunkValues.reduce((sum, val) => sum + val, 0) / chunkValues.length;
+
+                aggregatedDates.push(avgTime);
+                aggregatedValues.push(avgValue);
+            }
+        }
+
+        return { dates: aggregatedDates, values: aggregatedValues };
+    }
+
+    // ========== ОБНОВЛЕНИЕ ГРАФИКА ==========
+    function updateChart(labels, data) {
         const ctx = document.getElementById('chart').getContext('2d');
 
+        // Агрегируем данные если их слишком много
+        const aggregated = aggregateData(labels, data);
+        const displayLabels = aggregated.dates;
+        const displayData = aggregated.values;
+
         if (!chart) {
-            console.log("Creating new chart...");
             chart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: labels,
+                    labels: displayLabels,
                     datasets: [{
                         label: 'Температура (°C)',
-                        data: data,
-                        borderColor: 'rgb(75, 192, 192)',
-                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        data: displayData,
+                        borderColor: '#2196F3',
+                        backgroundColor: 'rgba(33, 150, 243, 0.1)',
                         tension: 0.1,
-                        fill: true
+                        fill: true,
+                        pointRadius: 2
                     }]
                 },
                 options: {
@@ -203,138 +308,48 @@
                         x: {
                             type: 'time',
                             time: {
-                                unit: 'hour',
                                 displayFormats: {
+                                    minute: 'HH:mm',
                                     hour: 'HH:mm'
                                 }
                             },
-                            title: {
-                                display: true,
-                                text: 'Время'
-                            }
+                            title: { display: true, text: 'Время' }
                         },
                         y: {
-                            title: {
-                                display: true,
-                                text: 'Температура (°C)'
-                            },
-                            suggestedMin: 15,
-                            suggestedMax: 35
-                        }
-                    },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                title: function(context) {
-                                    const date = new Date(context[0].parsed.x);
-                                    return date.toLocaleString('ru-RU', {
-                                        year: 'numeric',
-                                        month: 'short',
-                                        day: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                    });
-                                }
-                            }
+                            title: { display: true, text: 'Температура (°C)' }
                         }
                     }
                 }
             });
-            console.log("Chart created successfully");
         } else {
-            console.log("Updating existing chart...");
-            chart.data.labels = labels;
-            chart.data.datasets[0].data = data;
+            chart.data.labels = displayLabels;
+            chart.data.datasets[0].data = displayData;
             chart.update();
         }
     }
 
-    // Загрузка тестовых данных
-    async function loadTestData() {
-        console.log("Loading test data...");
+    // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+    function showError(message) {
+        const errorDiv = document.getElementById('error');
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+        setTimeout(() => errorDiv.style.display = 'none', 3000);
+    }
 
-        // Тестовые данные за последние 24 часа
+    function updateClock() {
         const now = new Date();
-        const labels = [];
-        const values = [];
-
-        for (let i = 24; i >= 0; i--) {
-            const date = new Date(now.getTime() - i * 60 * 60 * 1000);
-            labels.push(date);
-            // Синусоидальная температура для реалистичности
-            const hour = date.getHours();
-            const baseTemp = 20;
-            const variation = 5 * Math.sin(hour * Math.PI / 12);
-            const noise = (Math.random() - 0.5) * 2;
-            values.push(baseTemp + variation + noise);
-        }
-
-        const stats = {
-            count: values.length,
-            avg: values.reduce((a, b) => a + b, 0) / values.length,
-            min: Math.min(...values),
-            max: Math.max(...values)
-        };
-
-        document.getElementById('stats').innerHTML = `
-            <div class="stat-card">Измерений: ${stats.count} (тестовые)</div>
-            <div class="stat-card">Средняя: ${stats.avg.toFixed(2)}°C</div>
-            <div class="stat-card">Мин: ${stats.min.toFixed(2)}°C</div>
-            <div class="stat-card">Макс: ${stats.max.toFixed(2)}°C</div>
-        `;
-
-        updateChart(labels, values);
+        document.getElementById('localTime').textContent = now.toLocaleTimeString('ru-RU');
+        document.getElementById('serverTime').textContent = now.toUTCString().replace('GMT', 'UTC');
     }
 
-    // Загрузка последних 24 часов
-    function loadLastDay() {
-        const to = new Date();
-        const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
-        document.getElementById('from').value = formatDateTime(from);
-        document.getElementById('to').value = formatDateTime(to);
-        loadData();
-    }
-
-    // Автообновление графика
-    function autoUpdate() {
-        const button = event.target;
-        if (autoUpdateInterval) {
-            clearInterval(autoUpdateInterval);
-            autoUpdateInterval = null;
-            button.textContent = 'Автообновление';
-            button.style.backgroundColor = '';
-        } else {
-            autoUpdateInterval = setInterval(() => {
-                const from = document.getElementById('from').value;
-                const to = document.getElementById('to').value;
-
-                // Сдвигаем диапазон вперед
-                const fromDate = new Date(from);
-                const toDate = new Date(to);
-                const diff = toDate - fromDate;
-
-                fromDate.setTime(fromDate.getTime() + diff);
-                toDate.setTime(toDate.getTime() + diff);
-
-                document.getElementById('from').value = formatDateTime(fromDate);
-                document.getElementById('to').value = formatDateTime(toDate);
-                loadData();
-            }, 5000);
-            button.textContent = 'Остановить';
-            button.style.backgroundColor = '#ffcccc';
-        }
-    }
-
-    // Инициализация при загрузке
+    // ========== ИНИЦИАЛИЗАЦИЯ ==========
     window.onload = function() {
-        console.log("Page loaded, initializing...");
-        setDefaultRange();
-        // Сначала пробуем загрузить реальные данные
-        loadData().catch(() => {
-            // Если ошибка, показываем тестовые данные
-            console.log("Failed to load real data, showing test data");
-            loadTestData();
-        });
+        // Запускаем часы
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Устанавливаем начальный диапазон (24 часа)
+        setIntervalHours(24);
     };
 </script>
 </body>

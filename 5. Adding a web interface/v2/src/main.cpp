@@ -500,9 +500,24 @@ int main(int argc, char* argv[]) {
 
             try {
                 double temp = stod(temp_str);
+                // Валидация температуры
+                if (temp < -50.0 || temp > 100.0) {
+                    cerr << "ПРЕДУПРЕЖДЕНИЕ: Игнорируем нереальное значение: " << temp << "°C" << endl;
+                    continue;
+                }
+
+                // Дополнительная проверка на резкие скачки (более 10°C за секунду)
+                static double last_valid_temp = temp;
+                if (abs(temp - last_valid_temp) > 10.0) {
+                    cerr << "ПРЕДУПРЕЖДЕНИЕ: Слишком резкий скачок температуры: "
+                         << last_valid_temp << " -> " << temp << "°C. Используем предыдущее значение." << endl;
+                    temp = last_valid_temp;
+                }
+                last_valid_temp = temp;
+
                 if (db.insert(timestamp, temp)) {
                     count++;
-                    if (count % 10 == 0) cout << "Измерений: " << count << endl;
+                    if (count % 100 == 0) cout << "Записано измерений: " << count << endl;
                 }
             } catch (...) {
                 // Игнорируем ошибки преобразования
