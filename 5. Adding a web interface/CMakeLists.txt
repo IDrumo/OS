@@ -1,31 +1,36 @@
 cmake_minimum_required(VERSION 3.10)
-project(TemperatureLogger)
+project(WeatherStation)
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Указываем компилятору искать заголовки
-include_directories(
-        third_party/sqlite
+add_executable(weather_server
+        core/main_core.cpp
+        core/core.cpp
+        database/database.cpp
+        database/sqlite3.c
+        web/web.cpp
 )
 
-# Основная программа
-add_executable(temp_logger src/main.cpp third_party/sqlite/sqlite3.c)
+target_include_directories(weather_server PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/database
+        ${CMAKE_CURRENT_SOURCE_DIR}/web
+)
 
-# Симулятор
-add_executable(simulator src/simulator.cpp)
+configure_file(web/index.html ${CMAKE_CURRENT_BINARY_DIR}/index.html COPYONLY)
 
-# Для Windows
+add_executable(sensor_simulator
+        core/main_sim.cpp
+        core/core.cpp
+)
+
+target_include_directories(sensor_simulator PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/core
+)
+
 if(WIN32)
-    target_link_libraries(temp_logger ws2_32)
-    target_compile_definitions(temp_logger PRIVATE _CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN)
+    target_link_libraries(weather_server ws2_32)
+else()
+    target_link_libraries(weather_server pthread)
+    target_link_libraries(sensor_simulator pthread)
 endif()
-
-# Копируем index.html в директорию сборки
-add_custom_command(TARGET temp_logger POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/index.html
-        ${CMAKE_CURRENT_BINARY_DIR}/index.html
-        COMMENT "Copying index.html to build directory"
-)
