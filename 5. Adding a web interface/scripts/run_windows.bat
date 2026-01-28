@@ -10,12 +10,10 @@ start "Sensor Simulator" /B sensor_simulator.exe
 timeout /t 2 /nobreak >nul
 
 echo Starting weather server...
-rem Переходим в build и запускаем оттуда
 start "Weather Server" /B weather_server.exe virtual_com
 cd ..
 timeout /t 3 /nobreak >nul
 
-rem Получаем PID процессов
 for /f "tokens=2" %%i in ('tasklist ^| findstr /i "sensor_simulator"') do set SIM_PID=%%i
 for /f "tokens=2" %%i in ('tasklist ^| findstr /i "weather_server"') do set SERVER_PID=%%i
 
@@ -36,15 +34,12 @@ pause >nul
 echo.
 echo Stopping Weather Station services...
 
-rem Завершение процессов
 if defined SERVER_PID taskkill /PID %SERVER_PID% /F >nul 2>&1
 if defined SIM_PID taskkill /PID %SIM_PID% /F >nul 2>&1
 
-rem Альтернативный способ завершения
 taskkill /F /IM weather_server.exe >nul 2>&1
 taskkill /F /IM sensor_simulator.exe >nul 2>&1
 
-rem Очистка
 del virtual_com >nul 2>&1
 cd scripts
 
