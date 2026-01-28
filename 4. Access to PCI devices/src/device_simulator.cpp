@@ -15,7 +15,6 @@ using namespace std;
 
 int main() {
 #ifdef _WIN32
-    // Устанавливаем двоичный режим для stdout
     _setmode(_fileno(stdout), _O_BINARY);
     SetConsoleOutputCP(CP_UTF8);
 #endif
@@ -24,7 +23,6 @@ int main() {
     mt19937 gen(rd());
     normal_distribution<> dist(23.5, 2.0);
 
-    // Выводим заголовок в stderr, чтобы он не попал в пайп
     cerr << "Симулятор температурного датчика" << endl;
     cerr << "Формат: ISO8601,temperature" << endl;
     cerr << "Пример: 2024-01-15T14:30:00Z,23.456" << endl;
@@ -40,7 +38,6 @@ int main() {
         char time_buffer[80];
         strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%dT%H:%M:%SZ", timeinfo);
 
-        // Выводим в stdout
         cout << time_buffer << "," << fixed << setprecision(3) << temp << '\n';
         cout.flush();
 
