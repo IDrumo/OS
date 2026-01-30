@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Weather Station</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 20px; background: #f0f2f5; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h1 { margin: 0 0 10px 0; color: #1a1a1a; font-size: 2em; }
+        .temp-display { color: #2196F3; font-weight: bold; }
+        .meta { color: #666; font-size: 0.9em; margin-bottom: 20px; display: block; }
+        .controls { margin-top: 10px; }
+        button { padding: 8px 16px; margin-right: 5px; cursor: pointer; border: 1px solid #ddd; background: #fff; border-radius: 4px; }
+        button.active { background: #2196F3; color: white; border-color: #2196F3; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>Current: <span id="currTemp" class="temp-display">--</span>&deg;C</h1>
+    <span class="meta">Last update: <span id="currTime">--</span></span>
+</div>
+
+<div class="card">
+    <div class="controls">
+        <button onclick="setPeriod(60, this)" class="active">Last Minute</button>
+        <button onclick="setPeriod(3600, this)">Last Hour</button>
+        <button onclick="setPeriod(86400, this)">Last Day</button>
+    </div>
+    <canvas id="tempChart" height="100"></canvas>
+</div>
+
+<script>
+    let currentPeriod = 60;
+    const ctx = document.getElementById('tempChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Temperature',
+                data: [],
+                borderColor: '#2196F3',
+                backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                borderWidth: 2,
+                pointRadius: 0,
+                fill: true,
+                tension: 0.1
+            }]
+        },
+        options: {
+            animation: false,
+            responsive: true,
+            scales: {
+                y: { min: 15, max: 35 },
+                x: { ticks: { maxTicksLimit: 10 } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+
+    function setPeriod(seconds, btn) {
+        currentPeriod = seconds;
+        document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        update();
+    }
+
+    async function update() {
+        try {
+            const currRes = await fetch('/api/current');
+            const curr = await currRes.json();
+            document.getElementById('currTemp').innerText = curr.temp.toFixed(2);
+            document.getElementById('currTime').innerText = curr.time;
+
+            const histRes = await fetch('/api/history?seconds=' + currentPeriod);
+            const hist = await histRes.json();
+
+            const labels = hist.map(e => e.time.split(' ')[1]).reverse();
+            const data = hist.map(e => e.temp).reverse();
+
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = data;
+            chart.update();
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    setInterval(update, 1000);
+    update();
+</script>
+</body>
+</html>
