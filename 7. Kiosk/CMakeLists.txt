@@ -4,13 +4,12 @@ project(WeatherStation)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt5 COMPONENTS Core Widgets Network Charts REQUIRED)
+find_package(Qt5 COMPONENTS Core Widgets Network REQUIRED)
 
-if (NOT Qt5_FOUND)
-    message(FATAL_ERROR "Qt5 не найден. Установите: sudo apt install qt5-default qtbase5-dev libqt5charts5-dev")
+find_package(Qt5Charts QUIET)
+if(NOT Qt5Charts_FOUND)
+    message(WARNING "Qt5Charts не найден. Установите: sudo apt install libqt5charts5-dev")
 endif()
-
-configure_file(web/index.html ${CMAKE_CURRENT_BINARY_DIR}/index.html COPYONLY)
 
 add_executable(weather_server
         core/main_core.cpp
@@ -25,6 +24,8 @@ target_include_directories(weather_server PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/database
         ${CMAKE_CURRENT_SOURCE_DIR}/web
 )
+
+configure_file(web/index.html ${CMAKE_CURRENT_BINARY_DIR}/index.html COPYONLY)
 
 add_executable(sensor_simulator
         core/main_sim.cpp
@@ -44,18 +45,27 @@ target_include_directories(weather_gui PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/gui
 )
 
-target_link_libraries(weather_gui
-        Qt5::Core
-        Qt5::Widgets
-        Qt5::Network
-        Qt5::Charts
-)
-
-if(WIN32)
-    target_link_libraries(weather_server ws2_32)
-    target_link_libraries(weather_gui -lws2_32)
+if(Qt5Charts_FOUND)
+    target_link_libraries(weather_gui
+            Qt5::Core
+            Qt5::Widgets
+            Qt5::Network
+            Qt5::Charts
+    )
 else()
-    target_link_libraries(weather_server pthread)
-    target_link_libraries(sensor_simulator pthread)
-    target_link_libraries(weather_gui pthread)
+    target_link_libraries(weather_gui
+            Qt5::Core
+            Qt5::Widgets
+            Qt5::Network
+    )
+    message(WARNING "GUI собран без поддержки Charts")
+endif()
+
+if(UNIX AND NOT APPLE)
+    target_link_libraries(weather_server dl pthread)
+    target_link_libraries(sensor_simulator dl pthread)
+    target_link_libraries(weather_gui dl pthread)
+elseif(WIN32)
+    target_link_libraries(weather_server ws2_32)
+    target_link_libraries(weather_gui ws2_32)
 endif()
