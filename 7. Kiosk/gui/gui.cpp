@@ -18,13 +18,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), currentPeriodSeco
     updateHistoryData();
 
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
-
     grabKeyboard();
-
     showFullScreen();
-
     qApp->installEventFilter(this);
-
     QTimer* focusTimer = new QTimer(this);
     connect(focusTimer, &QTimer::timeout, [this]() {
         if (!this->hasFocus()) {
